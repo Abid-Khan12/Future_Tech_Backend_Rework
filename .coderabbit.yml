@@ -1,0 +1,56 @@
+# .coderabbit.yml
+
+version: 1
+
+reviews:
+  profile: "chill" # balanced feedback, not overly aggressive
+
+  request_changes_workflow: true
+
+  high_level_summary: true
+  review_status: true
+  collapse_walkthrough: false
+
+  auto_review:
+    enabled: true
+    drafts: false
+
+  path_filters:
+    - "src/**"
+    - "!dist/**"
+    - "!node_modules/**"
+
+  tools:
+    eslint:
+      enabled: true
+
+    typescript:
+      enabled: true
+
+    security:
+      enabled: true
+
+    performance:
+      enabled: true
+
+    complexity:
+      enabled: true
+
+  instructions: |
+    This is a Node.js + Express + TypeScript backend project.
+
+    Focus on:
+    - Type safety improvements
+    - Avoiding `any`
+    - Proper async/await handling
+    - Preventing unhandled promise rejections
+    - JWT security best practices
+    - Mongoose query optimization
+    - Preventing race conditions
+    - Input validation safety (Zod usage)
+    - Proper HTTP status codes
+    - REST best practices (PATCH vs PUT etc.)
+    - Error handling consistency
+
+    Avoid suggesting frontend or UI related improvements.
+    Avoid unnecessary stylistic nitpicks.
