@@ -3,11 +3,8 @@
       "target": "ES2020",
       "module": "commonjs",
       "moduleResolution": "node",
-      "rootDir": "src",
-      "outDir": "dist",
       "strict": true,
       "esModuleInterop": true,
-      "baseUrl": "./",
       "skipLibCheck": true,
       "forceConsistentCasingInFileNames": true,
       "declaration": true,
@@ -15,6 +12,9 @@
       "resolveJsonModule": true,
       "allowSyntheticDefaultImports": true,
       "typeRoots": ["./src/@types"],
+      "baseUrl": "./",
+      "outDir": "./dist",
+      "rootDir": "./src",
       "paths": {
          "@/*": ["src/*"]
       }
