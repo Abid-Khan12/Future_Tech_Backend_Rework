@@ -12,6 +12,9 @@ import { connectDB, disconnectDB } from "@/lib/mongoose";
 
 const app = express();
 
+// Trust reverse proxy (important for production like Leapcell)
+app.set("trust proxy", 1);
+
 // 1️⃣ Security headers first
 app.use(helmet());
 
