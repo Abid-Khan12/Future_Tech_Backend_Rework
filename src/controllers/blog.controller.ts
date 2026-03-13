@@ -2,19 +2,26 @@ import z from "zod";
 import DOMPurify from "dompurify";
 import { JSDOM } from "jsdom";
 import { Request, Response } from "express";
+import { SortOrder } from "mongoose";
 
 import blogModel, { IBlog } from "@/models/blog-model";
 
 import logger from "@/lib/winston";
 import generateSlug from "@/utils/generate-slug";
+import env from "@/schema/env-schema";
 import { createBlogSchema, updateBlogSchema } from "@/schema/apis/blog/schema";
 import { removeFromCloudinary, uploadToCloudinary } from "@/lib/cloudinary";
-import env from "@/schema/env-schema";
-import userModel from "@/models/user-model";
 
 type BlogData = Pick<IBlog, "title" | "content" | "status">;
 
-type BlogDataUpdate = Partial<Pick<IBlog, "title" | "content" | "status" | "bannerImage">>;
+type BlogDataUpdate = Partial<{
+   title: string;
+   content: string;
+   status: string;
+   bannerImage:
+      | { url: string; public_id: string; width: number; height: number }
+      | Express.Multer.File;
+}>;
 
 // For purifying the blog content
 const window = new JSDOM("").window;
@@ -44,7 +51,7 @@ export const createBlog = async (req: Request, res: Response) => {
 
       parsedBody.content = purify.sanitize(parsedBody.content);
 
-      const data = await uploadToCloudinary(parsedBody.bannerImage.buffer);
+      const data = await uploadToCloudinary(parsedBody.bannerImage.buffer, "blog_banners");
 
       if (!data) {
          logger.error("Error while banner image uploading");
@@ -64,7 +71,7 @@ export const createBlog = async (req: Request, res: Response) => {
          },
       };
 
-      await blogModel.create({ ...newBlogData, author: userId, slug: generateSlug() });
+      await blogModel.create({ ...newBlogData, author: userId!, slug: generateSlug() });
 
       res.status(201).json({
          status: 201,
@@ -137,7 +144,11 @@ export const updateBlog = async (req: Request, res: Response) => {
          });
       }
 
-      const { success, data: parsedBody, error } = updateBlogSchema.safeParse(body);
+      const {
+         success,
+         data: parsedBody,
+         error,
+      } = updateBlogSchema.safeParse({ ...body, bannerImage });
 
       if (!success) {
          const formatedError = z.flattenError(error);
@@ -166,10 +177,10 @@ export const updateBlog = async (req: Request, res: Response) => {
          ...parsedBody,
       };
 
-      if (bannerImage) {
+      if (parsedBody.bannerImage) {
          await removeFromCloudinary(blog.bannerImage.public_id);
 
-         const data = await uploadToCloudinary(bannerImage.buffer);
+         const data = await uploadToCloudinary(parsedBody.bannerImage.buffer, "blog_banners");
 
          if (!data) {
             logger.error("Error while banner image uploading");
@@ -216,6 +227,8 @@ export const updateBlog = async (req: Request, res: Response) => {
 
 export const getAllBlogs = async (req: Request, res: Response) => {
    try {
+      const isTopLiked = req.query.topLiked === "1";
+
       const limit = parseInt((req.query.limit as string) || env.QUERY_LIMIT);
 
       const offset = parseInt((req.query.offset as string) || env.QUERY_OFFSET);
@@ -224,13 +237,17 @@ export const getAllBlogs = async (req: Request, res: Response) => {
          status: "published",
       });
 
+      const sortOptions: Record<string, SortOrder> = isTopLiked
+         ? { likesCount: -1 }
+         : { createdAt: -1 };
+
       const blogs = await blogModel
          .find({ status: "published" })
          .select("-__v -bannerImage.public_id")
          .populate("author", "-__v -createdAt -updatedAt -email -avatar.public_id")
          .limit(limit)
          .skip(offset)
-         .sort({ createdAt: -1 })
+         .sort(sortOptions)
          .lean()
          .exec();
 
@@ -255,6 +272,7 @@ export const getAllBlogs = async (req: Request, res: Response) => {
 
 export const getSingleBlog = async (req: Request, res: Response) => {
    try {
+      const userId = req.optionalUserId;
       const { slug } = req.params as { slug: string };
 
       if (!slug) {
@@ -266,12 +284,27 @@ export const getSingleBlog = async (req: Request, res: Response) => {
 
       const blog = await blogModel
          .findOne({ slug })
-         .select("-__v")
+         .select("-__v +likes")
          .populate("author", "-__v -createdAt -updatedAt -email -bannerImage.public_id")
          .lean()
          .exec();
 
-      res.status(200).json({ status: 200, message: "Blog successfully fetched", blog });
+      if (!blog) {
+         return res.status(404).json({
+            status: 404,
+            message: "Post not found",
+         });
+      }
+
+      const alreadyLiked = userId && blog.likes.some((id) => id.toString() === userId.toString());
+
+      const { likes, ...blogWithoutLikes } = blog;
+
+      res.status(200).json({
+         status: 200,
+         message: "Blog successfully fetched",
+         blog: { ...blogWithoutLikes, isLiked: alreadyLiked },
+      });
 
       logger.info("Blog successfully get");
    } catch (error) {
@@ -327,6 +360,49 @@ export const getUserBlogs = async (req: Request, res: Response) => {
    }
 };
 
+export const getUserLikedBlogs = async (req: Request, res: Response) => {
+   try {
+      const userId = req.userId;
+      const limit = parseInt((req.query.limit as string) || env.QUERY_LIMIT);
+
+      const offset = parseInt((req.query.offset as string) || env.QUERY_OFFSET);
+
+      const totalBlogs = await blogModel.countDocuments({
+         likes: userId,
+      });
+
+      const blogs = await blogModel
+         .find({
+            likes: userId,
+         })
+         .select("-__v")
+         .populate("author", "-__v -createdAt -updatedAt -email -avatar.public_id")
+         .limit(limit)
+         .skip(offset)
+         .sort({ createdAt: -1 })
+         .lean()
+         .exec();
+
+      res.status(200).json({
+         status: 200,
+         message: "User liked blogs fetched successfully",
+         likedBlogs: blogs,
+         total: totalBlogs,
+         limit,
+         offset,
+      });
+
+      logger.info("User liked blogs fetched successfully");
+   } catch (error) {
+      logger.error("Error while getting user all blogs", error);
+      const err = error as Error;
+      res.status(500).json({
+         status: 500,
+         message: err.message,
+      });
+   }
+};
+
 export const getUserSingleBlog = async (req: Request, res: Response) => {
    try {
       const userId = req.userId;
@@ -350,6 +426,13 @@ export const getUserSingleBlog = async (req: Request, res: Response) => {
          .lean()
          .exec();
 
+      if (!blog) {
+         return res.status(404).json({
+            status: 404,
+            message: "Blog not found",
+         });
+      }
+
       res.status(200).json({
          status: 200,
          message: "User single blog fetched",
@@ -370,43 +453,33 @@ export const getUserSingleBlog = async (req: Request, res: Response) => {
 export const likeUnlikeBlog = async (req: Request, res: Response) => {
    try {
       const userId = req.userId;
-      const { blogId } = req.params as { blogId: string };
+      const { slug } = req.params as { slug: string };
 
-      const blog = await blogModel.findById(blogId).select("+likes").exec();
+      const blog = await blogModel.findOne({ slug, status: "published" }).select("+likes").exec();
 
       if (!blog) {
          return res.status(404).json({
             status: 404,
-            message: "Blog not found",
+            message: "Blog not found OR Isn't published yet",
          });
       }
 
-      const alreadyLiked = blog.likes.includes(userId);
+      const alreadyLiked = blog.likes.some((id) => id.toString() === userId.toString());
 
-      const updateBlog = await blogModel
-         .findByIdAndUpdate(
-            blogId,
-            alreadyLiked ? { $pull: { likes: userId } } : { $addToSet: { likes: userId } },
-            { returnDocument: "after" },
-         )
-         .select("likesCount likes")
-         .exec();
-
-      if (!updateBlog) {
-         return res.status(500).json({
-            status: 500,
-            message: "Error while liking/unliking blog",
-         });
+      if (alreadyLiked) {
+         blog.likes.pull(userId);
+      } else {
+         blog.likes.addToSet(userId);
       }
 
-      updateBlog.likesCount = updateBlog.likes.length;
-
-      await updateBlog.save();
+      blog.likesCount = blog.likes.length; // ✅ sync count
+      await blog.save(); // ✅ single DB call instead of findOneAndUpdate
 
       res.status(200).json({
          status: 200,
          message: alreadyLiked ? "Blog unliked" : "Blog liked",
-         likesCount: updateBlog.likes.length,
+         likesCount: blog.likesCount,
+         isLiked: !alreadyLiked,
       });
 
       logger.info(alreadyLiked ? "Blog unliked" : "Blog liked");

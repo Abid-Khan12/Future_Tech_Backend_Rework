@@ -1,5 +1,4 @@
 import { Schema, Types, model } from "mongoose";
-import { required } from "zod/v4/core/util.cjs";
 
 export interface IBlog {
    title: string;
@@ -12,7 +11,7 @@ export interface IBlog {
       height: number;
    };
    author: Types.ObjectId;
-   likes: Types.ObjectId[];
+   likes: Types.DocumentArray<Types.ObjectId>;
    likesCount: number;
    status: "draft" | "published";
 }

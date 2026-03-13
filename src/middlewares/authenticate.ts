@@ -10,9 +10,9 @@ const authenticate = async (req: Request, res: Response, next: NextFunction) => 
       const authHeader = req.headers.authorization as string;
 
       if (!authHeader) {
-         return res.status(400).json({
-            status: 400,
-            message: "No token provided",
+         return res.status(401).json({
+            status: 401,
+            message: "Unauthorized",
          });
       }
 

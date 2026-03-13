@@ -4,7 +4,7 @@ import env from "@/schema/env-schema";
 import logger from "@/lib/winston";
 
 const clientOptions: ConnectOptions = {
-   dbName: "express-demo-db",
+   dbName: "future-tech-rework-db",
    appName: "Cluster0",
    serverApi: {
       version: "1",

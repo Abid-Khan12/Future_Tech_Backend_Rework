@@ -49,7 +49,7 @@ export const signUp = async (req: Request, res: Response) => {
          });
       }
 
-      const result = await uploadToCloudinary(req.file?.buffer!);
+      const result = await uploadToCloudinary(parsedBody.avatar.buffer, "avatars");
 
       if (!result) {
          logger.error("Error while uploading avatar to cloudinary");
@@ -66,6 +66,13 @@ export const signUp = async (req: Request, res: Response) => {
             url: result.secure_url,
          },
       });
+
+      if (!newUser) {
+         return res.status(500).json({
+            status: 500,
+            message: "Error while creating new user",
+         });
+      }
 
       const accessToken = generateAccessToken(newUser._id);
 
@@ -87,6 +94,11 @@ export const signUp = async (req: Request, res: Response) => {
          status: 201,
          message: "Sign up successfully",
          accessToken,
+         user: {
+            userName: newUser.userName,
+            email: newUser.email,
+            avatar: newUser.avatar.url,
+         },
       });
 
       logger.info("User register successfully");
@@ -124,12 +136,15 @@ export const login = async (req: Request, res: Response) => {
          .findOne({
             $or: [{ email: parsedBody.identifier }, { userName: parsedBody.identifier }],
          })
-         .select("+password");
+         .select("+password")
+         .exec();
 
       if (!user) {
+         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+         const isEmail = emailRegex.test(parsedBody.identifier);
          return res.status(404).json({
             status: 404,
-            message: "User not found",
+            message: `User with this ${isEmail ? "email" : "username"} does not exist`,
          });
       }
 
@@ -146,23 +161,40 @@ export const login = async (req: Request, res: Response) => {
 
       const refershToken = generateRefreshToken(user._id);
 
-      await tokenModel.findOneAndUpdate(
+      const updatedToken = await tokenModel.findOneAndUpdate(
          { userId: user._id },
          {
             token: refershToken,
          },
+         {
+            returnDocument: "after",
+         },
       );
-      logger.info("Token updated successfully");
+
+      if (!updatedToken) {
+         await tokenModel.create({
+            userId: user._id,
+            token: refershToken,
+         });
+      }
+
+      logger.info("Token updated OR created successfully");
 
       res.cookie("refreshToken", refershToken, {
          httpOnly: true,
          secure: env.NODE_ENV === "production",
          sameSite: "strict",
+         maxAge: 7 * 24 * 60 * 60 * 1000,
       });
 
       res.status(200).json({
          status: 200,
          message: "Login successfully",
+         user: {
+            userName: user.userName,
+            email: user.email,
+            avatar: user.avatar.url,
+         },
          accessToken,
       });
 
@@ -185,6 +217,7 @@ export const refreshToken = async (req: Request, res: Response) => {
       const refreshToken = req.cookies.refreshToken as string;
 
       if (!refreshToken) {
+         logger.info("cookie refresh token not found");
          return res.status(401).json({
             status: 401,
             message: "Unauthorized",
@@ -194,6 +227,7 @@ export const refreshToken = async (req: Request, res: Response) => {
       const tokenExits = await tokenModel.exists({ token: refreshToken });
 
       if (!tokenExits) {
+         logger.info("refresh token model not found");
          return res.status(401).json({
             status: 401,
             message: "Unauthorized",
@@ -262,7 +296,10 @@ export const logout = async (req: Request, res: Response) => {
          secure: env.NODE_ENV === "production",
       });
 
-      res.sendStatus(204);
+      res.status(200).json({
+         status: 200,
+         message: "Logout successfully",
+      });
 
       logger.info("User logout successfully");
    } catch (error) {

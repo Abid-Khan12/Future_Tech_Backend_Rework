@@ -1,6 +1,7 @@
 import { Router } from "express";
 
 import authenticate from "@/middlewares/authenticate";
+import optionalAuth from "@/middlewares/optional-auth";
 import upload from "@/lib/multer";
 import {
    createBlog,
@@ -8,6 +9,7 @@ import {
    getAllBlogs,
    getSingleBlog,
    getUserBlogs,
+   getUserLikedBlogs,
    getUserSingleBlog,
    likeUnlikeBlog,
    updateBlog,
@@ -25,10 +27,12 @@ blogRoute.get("/", getAllBlogs);
 
 blogRoute.get("/user", authenticate, getUserBlogs);
 
-blogRoute.patch("/like-unlike/:blogId", authenticate, likeUnlikeBlog);
+blogRoute.get("/user/like", authenticate, getUserLikedBlogs);
 
 blogRoute.get("/user/:slug", authenticate, getUserSingleBlog);
 
-blogRoute.get("/:slug", getSingleBlog);
+blogRoute.get("/:slug", optionalAuth, getSingleBlog);
+
+blogRoute.patch("/like-unlike/:slug", authenticate, likeUnlikeBlog);
 
 export default blogRoute;
