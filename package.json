@@ -5,7 +5,9 @@
   "main": "dist/index.js",
   "type": "commonjs",
   "scripts": {
-    "dev": "nodemon"
+    "dev": "nodemon",
+    "build": "tsc",
+    "start": "node dist/index.js"
   },
   "keywords": [],
   "author": "",
