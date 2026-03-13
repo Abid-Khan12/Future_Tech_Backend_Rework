@@ -12,12 +12,12 @@
       "resolveJsonModule": true,
       "allowSyntheticDefaultImports": true,
       "typeRoots": ["./src/@types"],
-      "baseUrl": "./",
-      "outDir": "./dist",
-      "rootDir": "./src",
+      "baseUrl": "./src",
       "paths": {
-         "@/*": ["src/*"]
-      }
+         "@/*": ["*"]
+      },
+      "outDir": "./dist",
+      "rootDir": "./src"
    },
    "include": ["src/**/*"],
    "exclude": ["node_modules", "dist"]
